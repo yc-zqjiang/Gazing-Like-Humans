@@ -1,0 +1,29 @@
+# Datasets and runtime artifacts
+data/
+checkpoints/
+experiments/
+eval_logs/
+outputs/
+wandb/
+debug.py
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+build/
+dist/
+
+# Environments
+.venv/
+venv/
+env/
+.env
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
