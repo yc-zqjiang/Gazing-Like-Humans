@@ -2,8 +2,6 @@
 
 [Gazing Like Humans: Human-Inspired Gaze Target Estimation via Multi-Level Adaptive Fusion and Temporal Coherence](#citation)
 
-Zhiqiang Jiang, Jinyang Gao, Qingjia Kong, Linqi Yang, Lijun Zhao&dagger;, Ruifeng Li&dagger;
-
 <div align="center">
     <img src="./paper_figs/pip.png" width="90%"/>
 </div>
@@ -19,7 +17,7 @@ This repository releases the inference code and ViT-L checkpoints used to reprod
 ## Installation
 
 ```bash
-git clone https://github.com/strongandhandsome/Gazing-Like-Humans.git glh
+git clone https://github.com/yc-zqjiang/Gazing-Like-Humans.git glh
 cd glh
 conda env create -f environment.yml
 conda activate gazelle
