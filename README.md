@@ -19,7 +19,7 @@ This repository releases the inference code and ViT-L checkpoints used to reprod
 ## Installation
 
 ```bash
-git clone <this-repo-url> glh
+git clone https://github.com/strongandhandsome/Gazing-Like-Humans.git glh
 cd glh
 conda env create -f environment.yml
 conda activate gazelle
