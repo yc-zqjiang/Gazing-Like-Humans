@@ -35,10 +35,9 @@ We provide the ViT-L checkpoints used in the main experiments. The DINOv2 backbo
 | Model factory | Stage | Training data | Checkpoint |
 | --- | --- | --- | --- |
 | `gazelle_ms_dinov2_vitl14` | Static (MLAF + DAH) | GazeFollow | `saved_weights/vitl/gazefollow/epoch_14.pt` |
-| `gazelle_ms_dinov2_vitl14_inout` | Static (MLAF + DAH, in/out head) | VideoAttentionTarget | `saved_weights/vitl/vat/epoch_7.pt` |
-| `gazelle_mst_dinov2_vitl14_inout` | Temporal (MLAF + GTA + DAH) | VideoAttentionTarget | `saved_weights/vitl/vat/epoch_7.pt` |
+| `gazelle_mst_dinov2_vitl14_inout` | Temporal (MLAF + GTA + DAH, in/out head) | VideoAttentionTarget | `saved_weights/vitl/vat/epoch_7.pt` |
 
-The `mst` (multi-scale + temporal) factory shares the same VAT checkpoint as `ms_..._inout`: the temporal attention layer is appended to the trained static decoder at fine-tuning time and is part of the same state dict.
+The released VAT checkpoint corresponds to the temporal model (`gazelle_mst_..._inout`); it is the one used for the headline VAT numbers in the paper.
 
 ## Inference example
 
@@ -47,9 +46,9 @@ from PIL import Image
 import torch
 from gazelle.model import get_gazelle_model
 
-model, transform = get_gazelle_model("gazelle_ms_dinov2_vitl14_inout")
+model, transform = get_gazelle_model("gazelle_ms_dinov2_vitl14")
 model.load_gazelle_state_dict(
-    torch.load("saved_weights/vitl/vat/epoch_7.pt", weights_only=True)
+    torch.load("saved_weights/vitl/gazefollow/epoch_14.pt", weights_only=True)
 )
 model.eval()
 
@@ -66,7 +65,27 @@ with torch.no_grad():
     output = model(input)
 
 heatmap = output["heatmap"][0][0]   # [64, 64]
-inout   = output["inout"][0][0]     # in-frame score in [0, 1], None for non-inout models
+# output["inout"] is None for GazeFollow-trained models; use the VAT (temporal) model
+# below if you also need an in-frame score.
+```
+
+For in/out-of-frame prediction, use the temporal VAT checkpoint with a clip of `T` frames:
+
+```python
+model, transform = get_gazelle_model("gazelle_mst_dinov2_vitl14_inout")
+model.load_gazelle_state_dict(
+    torch.load("saved_weights/vitl/vat/epoch_7.pt", weights_only=True)
+)
+model.eval().to(device)
+
+clip = torch.stack([transform(Image.open(p).convert("RGB")) for p in frame_paths])  # [T, 3, 448, 448]
+bboxes = torch.tensor([bbox_per_frame], dtype=torch.float32)                        # [1, T, 4]
+
+with torch.no_grad():
+    output = model({"images": clip.unsqueeze(0).to(device), "bboxes": bboxes.to(device)})
+
+heatmap = output["heatmap"][0][0]   # middle-frame heatmap, [64, 64]
+inout   = output["inout"][0][0]     # middle-frame in-frame score in [0, 1]
 ```
 
 Visualize a predicted heatmap:
@@ -99,13 +118,12 @@ Expected: AUC `0.959`, Avg L2 `0.095`, Min L2 `0.039` on ViT-L (Table I in the p
 
 ### VideoAttentionTarget
 
-Download VAT [here](https://github.com/ejcgt/attention-target-detection?tab=readme-ov-file#dataset-1). Preprocess and run both the static and the temporal evaluations:
+Download VAT [here](https://github.com/ejcgt/attention-target-detection?tab=readme-ov-file#dataset-1). Preprocess and run the temporal evaluation:
 
 ```bash
 python data_prep/preprocess_vat.py --data_path /path/to/videoattentiontarget
 
-DATA_PATH=/path/to/videoattentiontarget bash scripts/eval_vat.sh        # static (MLAF only)
-DATA_PATH=/path/to/videoattentiontarget bash scripts/eval_vattemp.sh    # temporal (MLAF + GTA)
+DATA_PATH=/path/to/videoattentiontarget bash scripts/eval_vattemp.sh
 ```
 
 Expected (ViT-L, temporal): AUC `0.949`, L2 `0.098`, AP<sub>in/out</sub> `0.914`.
