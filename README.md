@@ -1,6 +1,6 @@
 # GLH: Gazing Like Humans
 
-[Gazing Like Humans: Human-Inspired Gaze Target Estimation via Multi-Level Adaptive Fusion and Temporal Coherence](#citation)
+**Gazing Like Humans: Human-Inspired Gaze Target Estimation via Multi-Level Adaptive Fusion and Temporal Coherence**
 
 <div align="center">
     <img src="./paper_figs/pip.png" width="90%"/>
@@ -167,30 +167,6 @@ paper_figs/          architecture overview and visualization figures used in the
 ## Acknowledgements
 
 GLH is built on top of [Gaze-LLE](https://github.com/fkryan/gazelle) by Ryan _et al._ (CVPR 2025). The DINOv2 backbone is loaded from [facebookresearch/dinov2](https://github.com/facebookresearch/dinov2). Dataset preprocessing follows [Detecting Attended Targets in Video](https://github.com/ejcgt/attention-target-detection). We use [timm](https://github.com/huggingface/pytorch-image-models) for the transformer blocks and (optionally) [xFormers](https://github.com/facebookresearch/xformers) for efficient attention.
-
-## Citation
-
-```bibtex
-@article{jiang2026glh,
-  title  = {Gazing Like Humans: Human-Inspired Gaze Target Estimation via
-            Multi-Level Adaptive Fusion and Temporal Coherence},
-  author = {Jiang, Zhiqiang and Gao, Jinyang and Kong, Qingjia and
-            Yang, Linqi and Zhao, Lijun and Li, Ruifeng},
-  year   = {2026},
-}
-```
-
-Upstream Gaze-LLE:
-
-```bibtex
-@inproceedings{ryan2025gazelle,
-  title     = {Gaze-LLE: Gaze Target Estimation via Large-Scale Learned Encoders},
-  author    = {Ryan, Fiona and Bati, Ajay and Lee, Sangmin and Bolya, Daniel and
-               Hoffman, Judy and Rehg, James M.},
-  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
-  year      = {2025}
-}
-```
 
 ## License
 
