@@ -115,7 +115,7 @@ python data_prep/preprocess_gazefollow.py --data_path /path/to/gazefollow
 DATA_PATH=/path/to/gazefollow bash scripts/eval_gazefollow.sh
 ```
 
-Expected (ViT-L): AUC `0.959`, Avg L2 `0.095`, Min L2 `0.039`.
+Expected (ViT-L): AUC `0.959`, Avg L2 `0.097`, Min L2 `0.040`.
 
 ### VideoAttentionTarget (temporal)
 
@@ -139,7 +139,7 @@ DATA_PATH=/path/to/goo-real             bash scripts/eval_gooreal.sh
 DATA_PATH=/path/to/childplay            bash scripts/eval_childplay.sh
 ```
 
-Expected zero-shot (ViT-L from GazeFollow): VAT AUC `0.939`, L2 `0.098`; GOO-Real AUC `0.901`, L2 `0.175`; ChildPlay AUC `0.963`, L2 `0.083`.
+Expected zero-shot (ViT-L from GazeFollow): VAT AUC `0.939`, L2 `0.098`; GOO-Real AUC `0.901`, L2 `0.175`; ChildPlay AUC `0.963`, L2 `0.084`.
 
 ### ViT-B variants
 
