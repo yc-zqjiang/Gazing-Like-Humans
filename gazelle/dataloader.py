@@ -2,6 +2,8 @@ import torch
 import json
 import os
 import copy
+import csv
+import glob
 from PIL import Image
 import numpy as np
 import torchvision.transforms.functional as TF
@@ -9,7 +11,7 @@ import gazelle.utils as utils
 
 
 # =============================================================================
-# Adaptive-sigma GT heatmap generation
+# Innovation 3: Adaptive-sigma GT heatmap generation
 # =============================================================================
 
 def get_adaptive_heatmap(gazex_norm_list, gazey_norm_list, bbox_norm, 
@@ -103,6 +105,276 @@ def load_data_gooreal(file, split):
 
 
 # =============================================================================
+# ChildPlay data loading
+# =============================================================================
+
+RESOLUTION_MAP = {
+    '360p':  (640, 360),
+    '480p':  (854, 480),
+    '720p':  (1280, 720),
+    '1080p': (1920, 1080),
+    '1440p': (2560, 1440),
+    '2160p': (3840, 2160),
+}
+
+
+def _parse_childplay_clip_name(clip_name):
+    is_downsampled = clip_name.endswith('-downsampled')
+    if is_downsampled:
+        clip_name = clip_name.replace('-downsampled', '')
+    last_underscore = clip_name.rfind('_')
+    video_id = clip_name[:last_underscore]
+    frame_range = clip_name[last_underscore + 1:]
+    parts = frame_range.split('-')
+    start_frame = int(parts[0])
+    end_frame = int(parts[1])
+    return video_id, start_frame, end_frame, is_downsampled
+
+
+def _load_clips_csv(path):
+    """
+    读取 clips.csv, 建立 clip_name → 原始视频分辨率 的映射.
+    
+    clips.csv 格式: clip, video_id, channel_id, split, frame_count, fps, resolution
+    resolution 字段: '720p', '1080p' 等
+    """
+    clips_csv_path = os.path.join(path, "clips.csv")
+    clip_resolution = {}
+    
+    if not os.path.exists(clips_csv_path):
+        print(f"WARNING: clips.csv not found at {clips_csv_path}, will try to infer resolution")
+        return clip_resolution
+    
+    import pandas as pd
+    df = pd.read_csv(clips_csv_path)
+    
+    for _, row in df.iterrows():
+        clip_name = row['clip']
+        res_str = str(row['resolution']).strip()
+        
+        if res_str in RESOLUTION_MAP:
+            clip_resolution[clip_name] = RESOLUTION_MAP[res_str]
+        else:
+            # 尝试解析 WxH 格式
+            if 'x' in res_str:
+                parts = res_str.split('x')
+                clip_resolution[clip_name] = (int(parts[0]), int(parts[1]))
+            else:
+                print(f"WARNING: unknown resolution '{res_str}' for clip {clip_name}, defaulting to 1280x720")
+                clip_resolution[clip_name] = (1280, 720)
+    
+    print(f"Loaded resolution info for {len(clip_resolution)} clips from clips.csv")
+    return clip_resolution
+
+
+def load_data_childplay_sequence(path, split):
+    """
+    加载 ChildPlay 为序列格式 (与 VAT 兼容).
+    
+    ★ 关键: 标注坐标是原始视频分辨率 (如 1280x720), 但提取的图片可能被缩放.
+       归一化时必须用原始视频分辨率, 这样 bbox_norm 在 [0, 1] 范围内,
+       且和缩放后图片的相对位置一致 (模型的 transform 会进一步 resize 到 448x448).
+    """
+    ann_dir = os.path.join(path, "annotations", split)
+    csv_files = sorted(glob.glob(os.path.join(ann_dir, "*.csv")))
+    
+    if len(csv_files) == 0:
+        raise FileNotFoundError(f"No CSV files found in {ann_dir}")
+    
+    # 读取每个 clip 的原始视频分辨率
+    clip_resolution = _load_clips_csv(path)
+    
+    sequences = []
+    total_frames = 0
+    skipped_clips = 0
+    
+    for csv_file in csv_files:
+        clip_full_name = os.path.splitext(os.path.basename(csv_file))[0]
+        video_id, start_frame, end_frame, is_downsampled = _parse_childplay_clip_name(clip_full_name)
+        
+        # 读取 CSV
+        rows = []
+        with open(csv_file, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                rows.append(row)
+        if len(rows) == 0:
+            continue
+        
+        # 检查图片目录
+        img_dir = os.path.join(path, "images", clip_full_name)
+        if not os.path.isdir(img_dir):
+            skipped_clips += 1
+            continue
+        
+        # ★ 获取原始视频分辨率 (标注坐标所在的坐标空间) ★
+        if clip_full_name in clip_resolution:
+            orig_w, orig_h = clip_resolution[clip_full_name]
+        else:
+            # fallback: 从实际图片推断
+            # 如果图片被缩放了, 这里会得到错误的值
+            # 所以最好确保 clips.csv 存在
+            existing = sorted([f for f in os.listdir(img_dir) if f.endswith(('.jpg', '.png'))])
+            if len(existing) > 0:
+                with Image.open(os.path.join(img_dir, existing[0])) as tmp_img:
+                    orig_w, orig_h = tmp_img.size
+                print(f"WARNING: clip '{clip_full_name}' not in clips.csv, "
+                      f"using image size {orig_w}x{orig_h} (may be wrong if images were resized)")
+            else:
+                skipped_clips += 1
+                continue
+        
+        # 按 person_id 分组
+        person_frames = {}
+        all_frames = set()
+        for row in rows:
+            pid = row['person_id']
+            frame_num = int(row['frame'])
+            all_frames.add(frame_num)
+            if pid not in person_frames:
+                person_frames[pid] = {}
+            person_frames[pid][frame_num] = row
+        
+        sorted_frames = sorted(all_frames)
+        
+        # 帧号 → 图片路径
+        frame_to_path = {}
+        for fn in sorted_frames:
+            if is_downsampled:
+                abs_fn = start_frame + (fn - 1) * 2
+            else:
+                abs_fn = start_frame + fn - 1
+            frame_to_path[fn] = os.path.join("images", clip_full_name, f"{video_id}_{abs_fn}.jpg")
+        
+        # 验证路径 (如果标准格式不存在, 尝试用目录中实际文件)
+        sample_path = os.path.join(path, frame_to_path[sorted_frames[0]])
+        if not os.path.exists(sample_path):
+            jpg_files = sorted([f for f in os.listdir(img_dir) if f.endswith(('.jpg', '.png'))])
+            if len(jpg_files) >= len(sorted_frames):
+                for i, fn in enumerate(sorted_frames):
+                    frame_to_path[fn] = os.path.join("images", clip_full_name, jpg_files[i])
+            else:
+                skipped_clips += 1
+                continue
+        
+        # ★ 预过滤: 只保留图片实际存在的帧 ★
+        valid_frames = [fn for fn in sorted_frames 
+                        if os.path.exists(os.path.join(path, frame_to_path[fn]))]
+        if len(valid_frames) == 0:
+            skipped_clips += 1
+            continue
+        
+        # ★ P.Head 支持: 预构建每帧所有人的头部框 (归一化) ★
+        frame_all_heads = {}
+        for fn in valid_frames:
+            heads_in_frame = []
+            for _pid, _fd in person_frames.items():
+                if fn in _fd:
+                    _r = _fd[fn]
+                    _bx = float(_r['bbox_x'])
+                    _by = float(_r['bbox_y'])
+                    _bw = float(_r['bbox_width'])
+                    _bh = float(_r['bbox_height'])
+                    heads_in_frame.append([
+                        _bx / orig_w, _by / orig_h,
+                        (_bx + _bw) / orig_w, (_by + _bh) / orig_h
+                    ])
+            frame_all_heads[fn] = heads_in_frame
+            
+        # 为每个 person 创建序列
+        for pid, frames_dict in person_frames.items():
+            seq_frames = []
+            
+            for fn in valid_frames:
+                img_path = frame_to_path[fn]
+                
+                if fn in frames_dict:
+                    row = frames_dict[fn]
+                    
+                    # bbox (像素坐标, 原始视频分辨率空间)
+                    bx = float(row['bbox_x'])
+                    by = float(row['bbox_y'])
+                    bw = float(row['bbox_width'])
+                    bh = float(row['bbox_height'])
+                    bbox = [bx, by, bx + bw, by + bh]
+                    
+                    # ★ 用原始视频分辨率归一化 ★
+                    bbox_norm = [bx / orig_w, by / orig_h, (bx + bw) / orig_w, (by + bh) / orig_h]
+                    
+                    gaze_class = row['gaze_class'].strip()
+                    gx_raw = float(row['gaze_x'])
+                    gy_raw = float(row['gaze_y'])
+                    
+                    if gaze_class == 'inside_visible' and gx_raw >= 0 and gy_raw >= 0:
+                        inout = 1
+                        gazex = [gx_raw]
+                        gazey = [gy_raw]
+                        # ★ 用原始视频分辨率归一化 ★
+                        gazex_norm = [gx_raw / orig_w]
+                        gazey_norm = [gy_raw / orig_h]
+                    else:
+                        inout = 0
+                        gazex = [-1.0]
+                        gazey = [-1.0]
+                        gazex_norm = [-1.0]
+                        gazey_norm = [-1.0]
+                    
+                    head_data = {
+                        'bbox': bbox,
+                        'bbox_norm': bbox_norm,
+                        'gazex': gazex,
+                        'gazey': gazey,
+                        'gazex_norm': gazex_norm,
+                        'gazey_norm': gazey_norm,
+                        'inout': inout,
+                    }
+                else:
+                    nearest = min(frames_dict.keys(), key=lambda k: abs(k - fn))
+                    nr = frames_dict[nearest]
+                    bx = float(nr['bbox_x'])
+                    by = float(nr['bbox_y'])
+                    bw = float(nr['bbox_width'])
+                    bh = float(nr['bbox_height'])
+                    bbox = [bx, by, bx + bw, by + bh]
+                    bbox_norm = [bx / orig_w, by / orig_h, (bx + bw) / orig_w, (by + bh) / orig_h]
+                    
+                    head_data = {
+                        'bbox': bbox,
+                        'bbox_norm': bbox_norm,
+                        'gazex': [-1.0],
+                        'gazey': [-1.0],
+                        'gazex_norm': [-1.0],
+                        'gazey_norm': [-1.0],
+                        'inout': 0,
+                    }
+                
+                seq_frames.append({
+                    'path': img_path,
+                    'heads': [head_data],
+                    'all_head_bboxes_norm': frame_all_heads.get(fn, []),
+                })
+            
+            if len(seq_frames) > 0:
+                sequences.append({'frames': seq_frames})
+                total_frames += len(seq_frames)
+    
+    print(f"ChildPlay ({split}): {len(sequences)} person-sequences, "
+          f"{total_frames} frames from {len(csv_files)} clips "
+          f"(skipped {skipped_clips} clips with missing/no images).")
+    return sequences
+
+
+def load_data_childplay_static(path, split, sample_rate=1):
+    sequences = load_data_childplay_sequence(path, split)
+    data = []
+    for seq in sequences:
+        for j in range(0, len(seq['frames']), sample_rate):
+            data.append(seq['frames'][j])
+    print(f"ChildPlay static ({split}): {len(data)} sampled frames.")
+    return data
+
+
+# =============================================================================
 # GazeDataset (static images)
 # =============================================================================
 
@@ -130,6 +402,8 @@ class GazeDataset(torch.utils.data.dataset.Dataset):
                 split = 'val'
             file_path = os.path.join(self.path, "annotations", f"gop_{split}.json")
             self.data = load_data_gooreal(file_path, split)
+        elif dataset_name == "childplay":
+            self.data = load_data_childplay_static(self.path, split, sample_rate=sample_rate)
         else:
             raise ValueError("Invalid dataset: {}".format(dataset_name))
 
@@ -232,6 +506,9 @@ class GazeVideoDataset(torch.utils.data.dataset.Dataset):
             self.is_video = False
         elif dataset_name == "videoattentiontarget":
             self.data = load_data_vat_sequence(os.path.join(self.path, "{}_preprocessed.json".format(split)))
+            self.is_video = True
+        elif dataset_name == "childplay":
+            self.data = load_data_childplay_sequence(self.path, split)
             self.is_video = True
         else:
             raise ValueError("Invalid dataset: {}".format(dataset_name))
