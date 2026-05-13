@@ -245,19 +245,12 @@ class GazeLLE(nn.Module):
             nn.Sigmoid()
         )
         if self.inout:
-            # self.inout_head = nn.Sequential(
-            #     nn.Linear(self.dim, 128),
-            #     nn.ReLU(),
-            #     nn.Dropout(0.1),
-            #     nn.Linear(128, 1),
-            #     nn.Sigmoid()
-            # )
             self.inout_head = nn.Sequential(
                 nn.Linear(self.dim, 256),
                 nn.ReLU(),
                 nn.Dropout(0.3),
                 nn.Linear(256, 64),
-                nn.ReLU(), 
+                nn.ReLU(),
                 nn.Dropout(0.3),
                 nn.Linear(64, 1),
                 nn.Sigmoid()

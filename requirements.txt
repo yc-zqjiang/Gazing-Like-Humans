@@ -1,0 +1,10 @@
+# Mirror of environment.yml for users who prefer pip.
+# Python 3.9 is recommended; choose a torch wheel that matches your CUDA driver.
+torch==2.5.1
+torchvision==0.20.1
+timm
+scikit-learn
+matplotlib
+pandas
+tqdm
+Pillow

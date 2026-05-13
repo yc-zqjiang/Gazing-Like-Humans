@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If this software is useful in your research, please cite the repository."
+title: "GLH: Gazing Like Humans"
+abstract: >-
+  Inference code and released ViT-B / ViT-L checkpoints for GLH (Gazing Like
+  Humans), a lightweight extension of the frozen-backbone gaze target
+  estimation paradigm built on top of Gaze-LLE.
+type: software
+repository-code: "https://github.com/yc-zqjiang/Gazing-Like-Humans"
+license: MIT
+authors:
+  - family-names: "Jiang"
+    given-names: "Zhiqiang"
+  - family-names: "Gao"
+    given-names: "Jinyang"
+  - family-names: "Li"
+    given-names: "Wei"
+  - family-names: "Kong"
+    given-names: "Qingjia"
+  - family-names: "Yang"
+    given-names: "Linqi"
+  - family-names: "Zhao"
+    given-names: "Lijun"
+  - family-names: "Li"
+    given-names: "Ruifeng"

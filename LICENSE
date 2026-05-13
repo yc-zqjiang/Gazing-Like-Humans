@@ -1,6 +1,8 @@
 MIT License
 
-Copyright (c) 2024 Fiona Ryan
+Copyright (c) 2024 Fiona Ryan (original Gaze-LLE)
+Copyright (c) 2026 GLH authors (modifications, additional modules, and released
+                                 checkpoints in this repository)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
